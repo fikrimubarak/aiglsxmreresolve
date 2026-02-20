@@ -1,0 +1,5 @@
+# AIGLSXMRERESOLVE - Python Dependencies
+# No external dependencies required - uses Python standard library only
+
+# Python 3.6+ required (uses standard library: re, gzip, os, subprocess)
+# System requirement: zgrep (standard on Linux)
