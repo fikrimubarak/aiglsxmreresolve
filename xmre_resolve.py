@@ -88,31 +88,28 @@ def resolve_paths(args):
     if not os.path.isfile(xmre_log):
         sys.exit(f"ERROR: XMRE log not found: {xmre_log}")
 
-    # Derive partition name from log filename: parpmc_xmre_messages.log → parpmc
-    log_basename = os.path.basename(xmre_log)
-    m = re.match(r'^(\w+?)_xmre_messages', log_basename)
-    if not m:
-        sys.exit(f"ERROR: Cannot derive partition name from filename: {log_basename}\n"
-                 "Expected format: <partition>_xmre_messages.log")
-    partition = m.group(1)
-
     partition_dir = os.path.abspath(args.partition_dir)
-    netlist = os.path.join(partition_dir, f"{partition}.pt_nonpg.v.gz")
-    if not os.path.isfile(netlist):
-        sys.exit(f"ERROR: Netlist not found: {netlist}")
+    if not os.path.isdir(partition_dir):
+        sys.exit(f"ERROR: Partition directory not found: {partition_dir}")
 
     output_dir = os.path.abspath(args.output_dir) if args.output_dir else os.getcwd()
     os.makedirs(output_dir, exist_ok=True)
 
-    return xmre_log, netlist, partition, output_dir
+    return xmre_log, partition_dir, output_dir
 
 
-# ============================================================================
-# PATH RESOLUTION
-# ============================================================================
+def get_partition_from_block(block):
+    """Extract partition name from the pcd_tb.pcd.<partition>. signal path in an XMRE block."""
+    m = re.search(r'pcd_tb\.pcd\.(\w+)\.', block)
+    return m.group(1) if m else None
+
+
 # ============================================================================
 # NETLIST PARSER - builds module hierarchy map
 # ============================================================================
+
+
+def build_module_map(netlist):
     """
     Parse the GLS netlist and build a module hierarchy map.
 
@@ -122,7 +119,7 @@ def resolve_paths(args):
             'instances': {inst_name: {'mod_type': str, 'unconnected_ports': set()}}
         }
     """
-    print("Building module map...", flush=True)
+    print(f"  Building module map for {os.path.basename(netlist)}...", flush=True)
     modules = {}
     current_module = None
     in_instance = False
@@ -455,19 +452,16 @@ def write_outputs(matches, unmatches, output_dir):
 
 def main():
     args = parse_args()
-    xmre_log, netlist, partition, output_dir = resolve_paths(args)
+    xmre_log, partition_dir, output_dir = resolve_paths(args)
 
     print("=" * 72)
     print("AIGLSXMRERESOLVE - GLS XMRE Signal Resolver")
     print("=" * 72)
     print()
     print(f"XMRE log:      {xmre_log}")
-    print(f"Partition:     {partition}")
-    print(f"Netlist:       {netlist}")
+    print(f"Partition dir: {partition_dir}")
     print(f"Output dir:    {output_dir}")
     print()
-    modules = build_module_map(netlist)
-    synopsys_ports = build_synopsys_port_set(netlist)
 
     print("Parsing XMRE log...", flush=True)
     with open(xmre_log) as f:
@@ -476,9 +470,32 @@ def main():
     blocks = [b.strip() for b in blocks if b.strip()]
     print(f"  {len(blocks)} XMRE blocks found", flush=True)
 
+    # Lazy per-partition caches (module map + synopsys port set)
+    module_map_cache = {}
+    synopsys_cache = {}
+
     matches = []
     unmatches = []
     for idx, block in enumerate(blocks):
+        partition = get_partition_from_block(block)
+        if not partition:
+            continue
+
+        # Load netlist for this partition on first encounter
+        if partition not in module_map_cache:
+            netlist = os.path.join(partition_dir, f"{partition}.pt_nonpg.v.gz")
+            if not os.path.isfile(netlist):
+                print(f"  WARNING: Netlist not found for partition '{partition}': {netlist}", flush=True)
+                unmatches.append((idx, f"<netlist missing: {partition}>"))
+                continue
+            print(f"Loading partition: {partition}", flush=True)
+            module_map_cache[partition] = build_module_map(netlist)
+            synopsys_cache[partition] = build_synopsys_port_set(netlist)
+
+        netlist = os.path.join(partition_dir, f"{partition}.pt_nonpg.v.gz")
+        modules = module_map_cache[partition]
+        synopsys_ports = synopsys_cache[partition]
+
         path_line, sch_paths = resolve_block(block, partition, modules, synopsys_ports, netlist)
         if path_line is None:
             continue
@@ -487,7 +504,9 @@ def main():
         else:
             unmatches.append((idx, path_line))
 
-    print(f"\nTotal: {len(matches)} matched, {len(unmatches)} unmatched out of {len(blocks)}")
+    partitions_used = sorted(module_map_cache.keys())
+    print(f"\nPartitions processed: {', '.join(partitions_used)}")
+    print(f"Total: {len(matches)} matched, {len(unmatches)} unmatched out of {len(blocks)}")
 
     seen_rtl, seen_unmatch = write_outputs(matches, unmatches, output_dir)
 

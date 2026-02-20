@@ -8,6 +8,8 @@ All notable changes to the GLS XMRE Signal Resolver.
 
 ### Added
 - XMRE block parser: extracts token and RTL path from elaboration log
+- Partition name derived from `pcd_tb.pcd.<partition>.` signal path per XMRE block
+- Per-block partition detection with lazy netlist loading (cached after first load)
 - Module hierarchy map builder (86K+ modules from `.pt_nonpg.v.gz`)
 - SYNOPSYS_UNCONNECTED port set builder (excludes disconnected nets)
 - Case 1: Escaped net search (`\TOKEN_SIGNAL[bit]`)

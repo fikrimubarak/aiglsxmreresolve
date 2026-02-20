@@ -102,7 +102,8 @@ grep 'SUSPMCFG' xmre_match xmre_unmatch
   `parpmc_xmre_messages.log` → looks for `parpmc.pt_nonpg.v.gz`
 
 ### "ERROR: Cannot derive partition name"
-- Log filename must follow `<partition>_xmre_messages.log` format
+- The XMRE block must contain a `pcd_tb.pcd.<partition>.` signal path
+- Verify the log file contains valid XMRE error blocks
 
 ### Signal appears in unmatch but you know it exists
 - It may be a `SYNOPSYS_UNCONNECTED` port (filtered out by design)

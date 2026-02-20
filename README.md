@@ -39,8 +39,11 @@ python3 xmre_resolve.py --help
 | `partition_dir` | Yes | Directory containing `<partition>.pt_nonpg.v.gz` |
 | `-o / --output-dir` | No | Output directory for results (default: current directory) |
 
-The partition name is derived automatically from the log filename:
-`parpmc_xmre_messages.log` → partition = `parpmc` → netlist = `parpmc.pt_nonpg.v.gz`
+The partition name is derived automatically from the signal path inside each XMRE block:
+`pcd_tb.pcd.<partition>.<rest>` → partition = `<partition>` → netlist = `<partition>.pt_nonpg.v.gz`
+
+Different blocks in the same log may reference different partitions. Each partition netlist is
+loaded once and cached for subsequent blocks.
 
 ## Matching Strategy
 
