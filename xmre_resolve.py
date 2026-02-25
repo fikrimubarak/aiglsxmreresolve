@@ -240,7 +240,7 @@ def find_signal_paths(modules, parent_module_type, signal_name, max_depth=2):
                           .get(containing_inst, {})
                           .get('unconnected_ports', set()))
                 if signal_name not in unconn:
-                    results.append(prefix + signal_name)
+                    results.append((prefix + signal_name, direction))
         if depth >= max_depth:
             return
         for inst, inst_data in modules[mod_type]['instances'].items():
@@ -327,7 +327,8 @@ def resolve_block(block, partition, modules, synopsys_ports, netlist):
                 if pmt not in modules:
                     continue
                 if bare in modules[pmt]['ports']:
-                    sch_paths.append(hier_prefix + '.' + sig)
+                    sig_type = modules[pmt]['ports'][bare]
+                    sch_paths.append((hier_prefix + '.' + sig, sig_type))
                     placed = True
                     break
                 for subinst_name, subinst_data in modules[pmt]['instances'].items():
@@ -335,13 +336,13 @@ def resolve_block(block, partition, modules, synopsys_ports, netlist):
                     if (sm in modules
                             and bare in modules[sm]['ports']
                             and modules[sm]['ports'][bare] == 'input'):
-                        sch_paths.append(hier_prefix + '.' + subinst_name + '.' + sig)
+                        sch_paths.append((hier_prefix + '.' + subinst_name + '.' + sig, 'input'))
                         placed = True
                         break
                 if placed:
                     break
             if not placed:
-                sch_paths.append(hier_prefix + '.' + sig)  # fallback
+                sch_paths.append((hier_prefix + '.' + sig, 'common'))  # fallback
 
         # Case 3: register flop / auto_vector instance  TOKEN_reg_SIGNAL_N  → .o / .oN
         def reg_search(tok_pat, sig_pat):
@@ -370,9 +371,9 @@ def resolve_block(block, partition, modules, synopsys_ports, netlist):
                         port = f'o{i + 1}'
                         break
                 if port:
-                    sch_paths.append(hier_prefix + '.' + inst_name + '.' + port)
+                    sch_paths.append((hier_prefix + '.' + inst_name + '.' + port, 'output'))
             else:
-                sch_paths.append(hier_prefix + '.' + inst_name + '.o')
+                sch_paths.append((hier_prefix + '.' + inst_name + '.o', 'output'))
 
         sch_paths = sorted(set(sch_paths))
 
@@ -396,11 +397,11 @@ def resolve_block(block, partition, modules, synopsys_ports, netlist):
                 grep_pat = r'\\[^ ]*' + fuzzy + r'[^ ]* '
                 escaped = _zgrep(grep_pat)
         for sig in escaped:
-            sch_paths.append(hier_prefix + '.' + sig)
+            sch_paths.append((hier_prefix + '.' + sig, 'common'))
         if parent_inst:
             for pmt in get_module_type(modules, parent_inst):
-                for sp in find_signal_paths(modules, pmt, token_clean, max_depth=2):
-                    sch_paths.append(hier_prefix + '.' + sp)
+                for sp, direction in find_signal_paths(modules, pmt, token_clean, max_depth=2):
+                    sch_paths.append((hier_prefix + '.' + sp, direction))
         sch_paths = sorted(set(sch_paths))
 
     return path_line, sch_paths
@@ -421,8 +422,8 @@ def write_outputs(matches, unmatches, output_dir):
             seen_rtl[rtl] = True
             n = len(seen_rtl)
             block_lines = [f"RTL_{n} {rtl}"]
-            for si, sch in enumerate(schs):
-                block_lines.append(f"SCH_{n}_{si + 1} {sch}")
+            for si, (sch, sig_type) in enumerate(schs):
+                block_lines.append(f"SCH_{n}_{si + 1} {sch} {sig_type}")
             match_out.append("\n".join(block_lines))
 
     seen_unmatch = {}
