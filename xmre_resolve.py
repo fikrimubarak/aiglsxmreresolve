@@ -311,17 +311,62 @@ def _port_decl_index(modules, parent_inst, bare_sig):
     return 999999
 
 
-def select_candidates(sch_paths, modules, hier_prefix, rtl_token):
+def _name_closeness(path, token, reg_token=None):
+    """
+    0 = exact match: token appears in signal/instance name and what immediately follows
+        is end-of-string, a bit index [N], or a GLS index _N(_MBIT...|end).
+    1 = suffix variant: token appears but extra semantic suffix follows (e.g. _PMC).
+    reg_token: for reg-flop paths, use this key instead of token
+               (GLS inserts _reg_ separator, e.g. TOKEN_reg_SIGNAL).
+    """
+    last = path.split('.')[-1]
+    if _is_reg_flop(path):
+        parts = path.split('.')
+        seg = parts[-2] if len(parts) >= 2 else ''
+        tok = reg_token if reg_token else token
+    else:
+        seg = last.lstrip('\\')
+        tok = token
+    # Strip trailing bit index [N]
+    seg = re.sub(r'\[\d+\]$', '', seg)
+    t_low = tok.lower()
+    s_low = seg.lower()
+    idx = s_low.find(t_low)
+    if idx == -1:
+        return 1
+    after = s_low[idx + len(t_low):]
+    # Exact: what follows is end-of-string, [, or _<digits>(_MBIT...|end)
+    if re.match(r'^(_\d+(_mbit.*|$)|\[|\s*$)', after):
+        return 0
+    return 1
+
+
+# Synthesis prefixes that appear on output signals (lower priority than plain)
+_OUTPUT_SYNTH_PFX = ('valid_', 'new_', 'load_')
+
+
+def _output_prefix_pri(bare_sig):
+    b = bare_sig.lower()
+    for i, pfx in enumerate(_OUTPUT_SYNTH_PFX):
+        if b.startswith(pfx):
+            return i + 1
+    return 0
+
+
+def select_candidates(sch_paths, modules, hier_prefix, rtl_token, reg_token=None):
     """
     Partition sch_paths into (selected, commented) based on user preference rules.
 
-    Multi-bit case: token has no '[' and >1 plain-prefix candidates exist.
-      → Keep all plain candidates, sorted by port declaration order (MSB→LSB).
+    Multi-bit case: token has no '[', >1 plain escaped-net candidates with DISTINCT
+      base names, AND no exact-match plain candidate exists (all have struct-field
+      suffixes beyond the token → register struct expansion).
+      → Keep all plain candidates sorted by port declaration order (MSB→LSB).
       → Comment prefixed candidates.
 
-    Single-best case: pick best by (type_pri, sub_pri, path), comment the rest.
-      Output sub-priority : reg-flop < shallow-hier
+    Single-best case: pick best by (type_pri, closeness, sub_pri, path).
+      Output sub-priority : reg-flop (.o/.oN) < synthesis-prefix < shallow-hier
       Common sub-priority : plain < handcode_wdata_ < we_ < write_ < load_ < new_ < handcode_rdata_
+      Closeness           : exact token match < suffix variant (e.g. _PMC)
     """
     if not sch_paths:
         return [], []
@@ -330,13 +375,14 @@ def select_candidates(sch_paths, modules, hier_prefix, rtl_token):
         path, sig_type = pt
         type_pri = _TYPE_PRI.get(sig_type, 99)
         bare = path.split('.')[-1].lstrip('\\')
+        closeness = _name_closeness(path, rtl_token, reg_token)
         if sig_type == 'output':
-            sub = 0 if _is_reg_flop(path) else (1 + _hier_depth(path, hier_prefix))
+            sub = 0 if _is_reg_flop(path) else (1 + _output_prefix_pri(bare) * 10 + _hier_depth(path, hier_prefix))
         elif sig_type == 'common':
             sub = _prefix_pri(bare)
         else:
             sub = 0
-        return (type_pri, sub, path)
+        return (type_pri, closeness, sub, path)
 
     token_has_bit = '[' in rtl_token
     if not token_has_bit:
@@ -346,13 +392,14 @@ def select_candidates(sch_paths, modules, hier_prefix, rtl_token):
             if not _is_reg_flop(p) and _prefix_pri(p.split('.')[-1].lstrip('\\')) == 0
         ]
         if len(plain) > 1:
-            # Only treat as multi-bit bus if candidates have DISTINCT base signal names
-            # (different register fields). Same signal at different depths → single-best.
             base_names = set(
                 re.sub(r'\[\d+\]$', '', p.split('.')[-1].lstrip('\\'))
                 for p, t in plain
             )
-            if len(base_names) > 1:
+            # Multi-bit bus: distinct base names AND no exact-match candidate
+            # (all have struct-field suffixes → register struct expansion like RTL_59)
+            has_exact = any(_name_closeness(p, rtl_token, reg_token) == 0 for p, t in plain)
+            if len(base_names) > 1 and not has_exact:
                 parent_inst = hier_prefix.split('.')[-1]
                 def port_key(pt):
                     bare = pt[0].split('.')[-1].lstrip('\\')
@@ -476,7 +523,11 @@ def resolve_block(block, partition, modules, synopsys_ports, netlist):
                 sch_paths.append((hier_prefix + '.' + inst_name + '.o', 'output'))
 
         sch_paths = sorted(set(sch_paths))
-        selected, commented = select_candidates(sch_paths, modules, hier_prefix, token)
+        selected, commented = select_candidates(
+            sch_paths, modules, hier_prefix,
+            token + '_' + signal_after,
+            reg_token=search_key  # GLS inserts _reg_: TOKEN_reg_SIGNAL
+        )
 
     else:
         # Case 2: TOKEN at end → escaped exact/fuzzy search + hierarchical port search
