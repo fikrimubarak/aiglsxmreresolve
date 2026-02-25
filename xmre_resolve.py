@@ -267,17 +267,117 @@ def fuzzy_index_pat(name):
 
 
 # ============================================================================
+# CANDIDATE SELECTION
+# ============================================================================
+
+# Signal type priority: lower = better
+_TYPE_PRI = {'output': 0, 'common': 1, 'input': 2}
+
+# Common-signal prefix priority: lower = better (0 = plain, no prefix)
+_COMMON_PFX_PRI = [
+    ('handcode_rdata_', 6),
+    ('new_', 5),
+    ('load_', 4),
+    ('write_', 3),
+    ('we_', 2),
+    ('handcode_wdata_', 1),
+]
+
+
+def _prefix_pri(bare_sig):
+    b = bare_sig.lower()
+    for pfx, pri in _COMMON_PFX_PRI:
+        if b.startswith(pfx):
+            return pri
+    return 0  # plain
+
+
+def _is_reg_flop(path):
+    return bool(re.search(r'\.o\d*$', path))
+
+
+def _hier_depth(path, hier_prefix):
+    rel = path[len(hier_prefix) + 1:] if path.startswith(hier_prefix + '.') else path
+    return rel.count('.')
+
+
+def _port_decl_index(modules, parent_inst, bare_sig):
+    """0-based port declaration index of bare_sig (no leading backslash) in parent_inst's module."""
+    for pmt in get_module_type(modules, parent_inst):
+        if pmt in modules:
+            keys = list(modules[pmt]['ports'].keys())
+            if bare_sig in keys:
+                return keys.index(bare_sig)
+    return 999999
+
+
+def select_candidates(sch_paths, modules, hier_prefix, rtl_token):
+    """
+    Partition sch_paths into (selected, commented) based on user preference rules.
+
+    Multi-bit case: token has no '[' and >1 plain-prefix candidates exist.
+      → Keep all plain candidates, sorted by port declaration order (MSB→LSB).
+      → Comment prefixed candidates.
+
+    Single-best case: pick best by (type_pri, sub_pri, path), comment the rest.
+      Output sub-priority : reg-flop < shallow-hier
+      Common sub-priority : plain < handcode_wdata_ < we_ < write_ < load_ < new_ < handcode_rdata_
+    """
+    if not sch_paths:
+        return [], []
+
+    def sort_key(pt):
+        path, sig_type = pt
+        type_pri = _TYPE_PRI.get(sig_type, 99)
+        bare = path.split('.')[-1].lstrip('\\')
+        if sig_type == 'output':
+            sub = 0 if _is_reg_flop(path) else (1 + _hier_depth(path, hier_prefix))
+        elif sig_type == 'common':
+            sub = _prefix_pri(bare)
+        else:
+            sub = 0
+        return (type_pri, sub, path)
+
+    token_has_bit = '[' in rtl_token
+    if not token_has_bit:
+        # Plain candidates: no prefix AND not a reg-flop path (escaped nets only)
+        plain = [
+            (p, t) for p, t in sch_paths
+            if not _is_reg_flop(p) and _prefix_pri(p.split('.')[-1].lstrip('\\')) == 0
+        ]
+        if len(plain) > 1:
+            # Only treat as multi-bit bus if candidates have DISTINCT base signal names
+            # (different register fields). Same signal at different depths → single-best.
+            base_names = set(
+                re.sub(r'\[\d+\]$', '', p.split('.')[-1].lstrip('\\'))
+                for p, t in plain
+            )
+            if len(base_names) > 1:
+                parent_inst = hier_prefix.split('.')[-1]
+                def port_key(pt):
+                    bare = pt[0].split('.')[-1].lstrip('\\')
+                    return _port_decl_index(modules, parent_inst, bare)
+                selected = sorted(plain, key=port_key)
+                commented = sorted([pt for pt in sch_paths if pt not in plain], key=sort_key)
+                return selected, commented
+
+    sorted_all = sorted(sch_paths, key=sort_key)
+    return [sorted_all[0]], sorted_all[1:]
+
+
+# ============================================================================
 # MATCHING LOGIC
 # ============================================================================
 
 def resolve_block(block, partition, modules, synopsys_ports, netlist):
     """
-    Resolve one XMRE block. Returns (path_line, sch_paths) or (path_line, []) on no match.
-    Returns (None, None) if the block cannot be parsed.
+    Resolve one XMRE block.
+    Returns (path_line, selected, commented) or (None, None, None) if unparseable.
+    selected/commented are lists of (sch_path, sig_type).
     """
     m = re.search(r"token '([^']+)'", block)
     if not m:
-        return None, None
+        return None, None, None
     token = m.group(1)
 
     path_line = None
@@ -288,7 +388,7 @@ def resolve_block(block, partition, modules, synopsys_ports, netlist):
                 path_line = pm.group(1).rstrip(';),')
                 break
     if not path_line:
-        return None, None
+        return None, None, None
 
     def _zgrep(pat):
         return zgrep_E(pat, netlist)
@@ -376,6 +476,7 @@ def resolve_block(block, partition, modules, synopsys_ports, netlist):
                 sch_paths.append((hier_prefix + '.' + inst_name + '.o', 'output'))
 
         sch_paths = sorted(set(sch_paths))
+        selected, commented = select_candidates(sch_paths, modules, hier_prefix, token)
 
     else:
         # Case 2: TOKEN at end → escaped exact/fuzzy search + hierarchical port search
@@ -403,8 +504,9 @@ def resolve_block(block, partition, modules, synopsys_ports, netlist):
                 for sp, direction in find_signal_paths(modules, pmt, token_clean, max_depth=2):
                     sch_paths.append((hier_prefix + '.' + sp, direction))
         sch_paths = sorted(set(sch_paths))
+        selected, commented = select_candidates(sch_paths, modules, hier_prefix, token_clean)
 
-    return path_line, sch_paths
+    return path_line, selected, commented
 
 
 # ============================================================================
@@ -412,18 +514,25 @@ def resolve_block(block, partition, modules, synopsys_ports, netlist):
 # ============================================================================
 
 def write_outputs(matches, unmatches, output_dir):
-    """Write xmre_match and xmre_unmatch files with 1-based RTL/SCH indexing."""
+    """Write xmre_match and xmre_unmatch files with 1-based RTL/SCH indexing.
+    Selected (best) candidates are written uncommented; alternatives are commented with #.
+    """
     match_out = []
     unmatch_out = []
     seen_rtl = {}
 
-    for _idx, rtl, schs in matches:
+    for _idx, rtl, selected, commented in matches:
         if rtl not in seen_rtl:
             seen_rtl[rtl] = True
             n = len(seen_rtl)
             block_lines = [f"RTL_{n} {rtl}"]
-            for si, (sch, sig_type) in enumerate(schs):
-                block_lines.append(f"SCH_{n}_{si + 1} {sch} {sig_type}")
+            si = 1
+            for sch, sig_type in selected:
+                block_lines.append(f"SCH_{n}_{si} {sch} {sig_type}")
+                si += 1
+            for sch, sig_type in commented:
+                block_lines.append(f"#SCH_{n}_{si} {sch} {sig_type}")
+                si += 1
             match_out.append("\n".join(block_lines))
 
     seen_unmatch = {}
@@ -497,11 +606,11 @@ def main():
         modules = module_map_cache[partition]
         synopsys_ports = synopsys_cache[partition]
 
-        path_line, sch_paths = resolve_block(block, partition, modules, synopsys_ports, netlist)
+        path_line, selected, commented = resolve_block(block, partition, modules, synopsys_ports, netlist)
         if path_line is None:
             continue
-        if sch_paths:
-            matches.append((idx, path_line, sch_paths))
+        if selected or commented:
+            matches.append((idx, path_line, selected, commented))
         else:
             unmatches.append((idx, path_line))
 
