@@ -10,6 +10,8 @@ Searches the GLS partition netlist for matching signals and produces structured 
 - **Searches** the GLS netlist (`.pt_nonpg.v.gz`) for matching signals
 - **Reports** matched signals to `xmre_match` and unresolved paths to `xmre_unmatch`
 - **Handles** three matching cases: flattened escaped nets, hierarchical ports, register flops
+- **Annotates** each candidate with signal type (`output` / `common` / `input`)
+- **Auto-selects** best candidate (uncommented), with alternatives `#`-commented
 
 ## Quick Start
 
@@ -62,16 +64,38 @@ Detects synthesis register flops named `TOKEN_reg_SIGNAL_N` with output port `.o
 Also handles `auto_vector_..._MBIT_...` multi-bit flop instances, resolving the
 correct `.oN` port by matching the segment index.
 
+## Candidate Selection
+
+After collecting all candidates for an XMRE block, the best match is auto-selected
+(uncommented); alternatives are kept with a `#` prefix for reference.
+
+**Selection priority**: signal type → name closeness → sub-priority
+- **Type**: `output` > `common` > `input`
+- **Closeness**: exact name match (closeness=0) beats suffix variant, e.g. `DCG_EN_SPXB`
+  wins over `DCG_EN_SPXB_PMC` (closeness=1). For reg-flop paths, uses GLS form
+  `TOKEN_reg_SIGNAL` (GLS inserts `_reg_` separator).
+- **Output sub-priority**: Rank 1 plain reg-flop (`.o`/`.oN`, plain instance) > Rank 2 plain
+  output signal > Rank 4 synthesis-prefixed signal (`valid_`, `new_`, `load_`) > Rank 5
+  synthesis-prefixed instance reg-flop (`pwc_clk_gate_`, etc.). Within each rank, shallower
+  hierarchy wins.
+- **Common sub-priority**: plain > `handcode_wdata_` > `we_` > `write_` > `load_` >
+  `new_` > `handcode_rdata_`
+
+**Multi-bit bus** (register struct expansion): when all candidates are struct-field
+variants of a token with no `[bit]`, all plain candidates are kept uncommented and
+sorted by netlist port declaration order (MSB first).
+
 ## Output Format
 
 ### xmre_match
 ```
 RTL_1 pcd_tb.pcd.parpmc....SUS_SIG_MON_0.PCHPWR_PIN[0]
-SCH_1_1 pcd_tb.pcd.parpmc....\SUS_SIG_MON_0_PCHPWR_PIN[0]
-SCH_1_2 pcd_tb.pcd.parpmc....\new_SUS_SIG_MON_0_PCHPWR_PIN[0]
+SCH_1_1 pcd_tb.pcd.parpmc....\new_SUS_SIG_MON_0_PCHPWR_PIN[0] input
+#SCH_1_2 pcd_tb.pcd.parpmc....\load_SUS_SIG_MON_0_PCHPWR_PIN[0] common
 
 RTL_2 pcd_tb.pcd.parpmc....SUSPMCFG.EXT_SUS_PD_EN
-SCH_2_1 pcd_tb.pcd.parpmc....SUSPMCFG_reg_EXT_SUS_PD_EN_0.o
+SCH_2_1 pcd_tb.pcd.parpmc....SUSPMCFG_reg_EXT_SUS_PD_EN_0.o output
+#SCH_2_2 pcd_tb.pcd.parpmc....\SUSPMCFG_EXT_SUS_PD_EN[0] common
 ```
 
 ### xmre_unmatch
@@ -108,7 +132,7 @@ Organization: Intel Corporation - PCH Validation Team
 
 ## AI Assistant
 
-Developed with assistance from **GitHub Copilot (Claude Sonnet 4.5)**
+Developed with assistance from **GitHub Copilot (Claude Sonnet 4.6)**
 See `AI_CONTRIBUTION.md` for details.
 
 ## License
@@ -118,6 +142,6 @@ Internal Intel tool - Not for external distribution
 ---
 
 **Status**: Production Ready ✓
-**Version**: 1.0 (2026-02-20)
+**Version**: 1.1 (2026-02-25)
 **Author**: Fikri (raden.ali.fikri.mubarak@intel.com)
-**AI Assistant**: GitHub Copilot (Claude Sonnet 4.5)
+**AI Assistant**: GitHub Copilot (Claude Sonnet 4.6)

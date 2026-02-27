@@ -4,6 +4,55 @@ All notable changes to the GLS XMRE Signal Resolver.
 
 ---
 
+## [1.2.0] - 2026-02-27 - Output Rank Refinement & Port Order Fix
+
+### Changed
+- **Output sub-priority refactored** into explicit `_output_rank()` function with 4 tiers:
+  - Rank 1: reg-flop (`.o`/`.oN`) with plain instance name → best output
+  - Rank 2: plain non-reg-flop output signal
+  - Rank 4: non-reg-flop output with synthesis prefix on signal name (`valid_`, `new_`, `load_`)
+  - Rank 5: reg-flop whose instance name has synthesis prefix (`pwc_clk_gate_`, etc.) → worst output
+- **`sort_key` for output** now uses `rank * 1000 + hier_depth` instead of the old
+  `0 if reg_flop else 1 + prefix_pri * 10 + hier_depth`. This makes `pwc_clk_gate_`
+  instances reliably lower-priority than `auto_vector_` instances regardless of alphabetical order.
+
+### Fixed
+- **Multi-bit bus secondary sort**: `port_key` returns `(decl_order, -bit_idx)` so that
+  within the same netlist field, higher bit indices (MSB) sort before lower (LSB).
+  Previously only `decl_order` was used, which could mis-order bits if two fields share
+  adjacent declaration positions.
+
+### Added
+- `_INST_SYNTH_RE` compiled regex for instance-name synthesis prefix detection.
+- `_output_rank(path)` helper function (replaces inline `sub` calculation for outputs).
+
+---
+
+## [1.1.0] - 2026-02-25 - Auto-Selection & Signal Type
+
+### Added
+- **Signal type annotation**: every SCH line ends with `output`, `common`, or `input`
+  - `output` — declared output port in its containing module
+  - `input`  — declared input port (sub-hierarchy placement applied)
+  - `common` — internal net (no port declaration found)
+- **Auto-selection**: best candidate left uncommented (SCH_N_1); alternatives prefixed
+  with `#` (e.g. `#SCH_N_2`) — all paths still visible for manual override
+- **Candidate selection priority**: type (`output` > `common` > `input`) →
+  name closeness → sub-priority (see WORKFLOW.md for full rules)
+- **Name closeness scoring**: exact name match (closeness=0) beats suffix variant
+  (closeness=1), e.g. `DCG_EN_SPXB` preferred over `DCG_EN_SPXB_PMC`
+- **`reg_token` for reg-flop closeness**: uses GLS form `TOKEN_reg_SIGNAL` when
+  evaluating name closeness for register flop candidates
+- **Output synthesis prefix penalty**: `valid_`, `new_`, `load_` prefixed output
+  signals ranked below plain output signals
+- **Multi-bit bus ordering**: when token maps to a register struct (multiple distinct
+  field names, no exact match), all plain candidates kept uncommented and sorted by
+  netlist port declaration order (= MSB first, as declared in module port list)
+- **SCH indexing update**: selected (uncommented) = SCH_N_1 … SCH_N_M;
+  commented alternatives = SCH_N_(M+1) … SCH_N_K
+
+---
+
 ## [1.0.0] - 2026-02-20 - Initial Release
 
 ### Added
@@ -66,7 +115,7 @@ All notable changes to the GLS XMRE Signal Resolver.
 
 ---
 
-**Latest Version**: 1.0.0
-**Release Date**: 2026-02-20
+**Latest Version**: 1.2.0
+**Release Date**: 2026-02-27
 **Author**: Fikri (raden.ali.fikri.mubarak@intel.com)
 **Status**: Production Ready ✓

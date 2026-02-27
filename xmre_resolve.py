@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-AIGLSXMRERESOLVE - GLS XMRE Signal Resolver v1.0
+AIGLSXMRERESOLVE - GLS XMRE Signal Resolver v1.2
 ==================================================
 
 Resolves Cross-Module Reference Errors (XMRE) from GLS elaboration by searching
@@ -29,7 +29,7 @@ Author: Fikri (raden.ali.fikri.mubarak@intel.com)
 AI Assistant: GitHub Copilot (Claude Sonnet 4.5 - 202502)
 Repository: /nfs/site/disks/zsc16_rmubarak_stod001/aitest/aiglsxmreresolve/
 Documentation: README.md, QUICK_START.md
-Version: 1.0 (2026-02-20)
+Version: 1.2 (2026-02-27)
 """
 
 import argparse
@@ -46,7 +46,7 @@ import sys
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description='AIGLSXMRERESOLVE - GLS XMRE Signal Resolver v1.0',
+        description='AIGLSXMRERESOLVE - GLS XMRE Signal Resolver v1.2',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog='''
 Examples:
@@ -344,6 +344,9 @@ def _name_closeness(path, token, reg_token=None):
 # Synthesis prefixes that appear on output signals (lower priority than plain)
 _OUTPUT_SYNTH_PFX = ('valid_', 'new_', 'load_')
 
+# Synthesis prefixes that appear on reg-flop instance names (lowest output priority)
+_INST_SYNTH_RE = re.compile(r'^(pwc_clk_gate_|valid_|new_|load_)')
+
 
 def _output_prefix_pri(bare_sig):
     b = bare_sig.lower()
@@ -351,6 +354,23 @@ def _output_prefix_pri(bare_sig):
         if b.startswith(pfx):
             return i + 1
     return 0
+
+
+def _output_rank(path):
+    """
+    Output sub-priority rank (lower = better):
+      1 = reg-flop (.o/.oN) with plain instance name (auto_vector_ or no synth prefix)
+      2 = plain non-reg-flop output signal
+      4 = non-reg-flop output with synthesis prefix on signal name (valid_, new_, load_)
+      5 = reg-flop (.o/.oN) whose instance name has synthesis prefix (pwc_clk_gate_, etc.)
+    """
+    parts = path.split('.')
+    sig = parts[-1]
+    if re.match(r'^o\d*$', sig):
+        inst = parts[-2] if len(parts) >= 2 else ''
+        return 5 if _INST_SYNTH_RE.match(inst) else 1
+    bare = sig.lstrip('\\')
+    return 4 if _output_prefix_pri(bare) > 0 else 2
 
 
 def select_candidates(sch_paths, modules, hier_prefix, rtl_token, reg_token=None):
@@ -364,7 +384,8 @@ def select_candidates(sch_paths, modules, hier_prefix, rtl_token, reg_token=None
       → Comment prefixed candidates.
 
     Single-best case: pick best by (type_pri, closeness, sub_pri, path).
-      Output sub-priority : reg-flop (.o/.oN) < synthesis-prefix < shallow-hier
+      Output sub-priority : rank 1 (plain reg-flop) < rank 2 (plain output) < rank 4 (synth signal) < rank 5 (synth instance reg-flop)
+                            within same rank, shallower hierarchy wins
       Common sub-priority : plain < handcode_wdata_ < we_ < write_ < load_ < new_ < handcode_rdata_
       Closeness           : exact token match < suffix variant (e.g. _PMC)
     """
@@ -377,7 +398,8 @@ def select_candidates(sch_paths, modules, hier_prefix, rtl_token, reg_token=None
         bare = path.split('.')[-1].lstrip('\\')
         closeness = _name_closeness(path, rtl_token, reg_token)
         if sig_type == 'output':
-            sub = 0 if _is_reg_flop(path) else (1 + _output_prefix_pri(bare) * 10 + _hier_depth(path, hier_prefix))
+            rank = _output_rank(path)
+            sub = rank * 1000 + _hier_depth(path, hier_prefix)
         elif sig_type == 'common':
             sub = _prefix_pri(bare)
         else:
@@ -403,7 +425,9 @@ def select_candidates(sch_paths, modules, hier_prefix, rtl_token, reg_token=None
                 parent_inst = hier_prefix.split('.')[-1]
                 def port_key(pt):
                     bare = pt[0].split('.')[-1].lstrip('\\')
-                    return _port_decl_index(modules, parent_inst, bare)
+                    bit_m = re.search(r'\[(\d+)\]$', bare)
+                    bit_idx = int(bit_m.group(1)) if bit_m else -1
+                    return (_port_decl_index(modules, parent_inst, bare), -bit_idx)
                 selected = sorted(plain, key=port_key)
                 commented = sorted([pt for pt in sch_paths if pt not in plain], key=sort_key)
                 return selected, commented

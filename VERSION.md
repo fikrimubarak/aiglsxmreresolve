@@ -1,5 +1,41 @@
 # AIGLSXMRERESOLVE Version History
 
+## Version 1.2 (2026-02-27) - Output Rank Refinement & Port Order Fix
+
+### Overview
+Improved output candidate ranking with explicit instance-name synthesis detection,
+and added secondary bit-index sort for multi-bit bus port declaration ordering.
+
+### Changes
+✓ **Output rank by instance prefix**: `pwc_clk_gate_` (and `valid_`, `new_`, `load_`)
+  prefixed reg-flop instances are now explicitly ranked as Rank 5 (worst output priority),
+  below plain `auto_vector_` reg-flops (Rank 1). Previously relied on alphabetical tiebreak.
+✓ **`_output_rank()` function**: new helper encoding the 4-tier output sub-priority:
+  Rank 1 = plain reg-flop → Rank 2 = plain output → Rank 4 = synthesis-prefixed signal →
+  Rank 5 = synthesis-prefixed instance reg-flop
+✓ **Multi-bit bus secondary sort**: `port_key` now returns `(decl_order, -bit_idx)`,
+  ensuring MSB-first ordering within the same field when ports share a declaration position.
+
+---
+
+## Version 1.1 (2026-02-25) - Auto-Selection & Signal Type
+
+### Overview
+Added signal type annotation, auto-selection of best candidate, name closeness scoring,
+and multi-bit bus port-declaration ordering.
+
+### New Features
+✓ Signal type annotation: `output` / `common` / `input` on every SCH line
+✓ Auto-selection: best candidate uncommented, alternatives `#`-prefixed
+✓ Selection priority: type → closeness → sub-priority (output/common rules)
+✓ Name closeness scoring: exact match beats suffix variant (e.g. `_PMC`)
+✓ `reg_token` support: correct closeness for reg-flop paths (`TOKEN_reg_SIGNAL`)
+✓ Output synthesis prefix penalty (`valid_`, `new_`, `load_`)
+✓ Multi-bit bus ordering: all struct-field candidates sorted MSB→LSB by netlist declaration order
+✓ SCH indexing: selected = 1..M (uncommented), alternatives = M+1..K (`#`)
+
+---
+
 ## Version 1.0 (2026-02-20) - Initial Release
 
 ### Overview
@@ -35,5 +71,6 @@ Production-ready GLS XMRE signal resolver with three matching cases and multiple
 ---
 
 **Current Status**: Production Ready ✓
+**Current Version**: 1.2 (2026-02-27)
 **Author**: Fikri (raden.ali.fikri.mubarak@intel.com)
 **Stability**: Stable
