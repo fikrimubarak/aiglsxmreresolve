@@ -4,6 +4,14 @@ All notable changes to the GLS XMRE Signal Resolver.
 
 ---
 
+## [1.3.0] - 2026-03-13 - Rename SCH to NET in xmre_match
+
+### Changed
+- **Output label renamed**: `SCH_N_M` → `NET_N_M` in `xmre_match` (selected and commented lines).
+  Reflects that the resolved paths are GLS netlist signals, not schematic names.
+
+---
+
 ## [1.2.0] - 2026-02-27 - Output Rank Refinement & Port Order Fix
 
 ### Changed
@@ -35,8 +43,8 @@ All notable changes to the GLS XMRE Signal Resolver.
   - `output` — declared output port in its containing module
   - `input`  — declared input port (sub-hierarchy placement applied)
   - `common` — internal net (no port declaration found)
-- **Auto-selection**: best candidate left uncommented (SCH_N_1); alternatives prefixed
-  with `#` (e.g. `#SCH_N_2`) — all paths still visible for manual override
+- **Auto-selection**: best candidate left uncommented (NET_N_1); alternatives prefixed
+  with `#` (e.g. `#NET_N_2`) — all paths still visible for manual override
 - **Candidate selection priority**: type (`output` > `common` > `input`) →
   name closeness → sub-priority (see WORKFLOW.md for full rules)
 - **Name closeness scoring**: exact name match (closeness=0) beats suffix variant
@@ -48,8 +56,8 @@ All notable changes to the GLS XMRE Signal Resolver.
 - **Multi-bit bus ordering**: when token maps to a register struct (multiple distinct
   field names, no exact match), all plain candidates kept uncommented and sorted by
   netlist port declaration order (= MSB first, as declared in module port list)
-- **SCH indexing update**: selected (uncommented) = SCH_N_1 … SCH_N_M;
-  commented alternatives = SCH_N_(M+1) … SCH_N_K
+- **NET indexing update**: selected (uncommented) = NET_N_1 … NET_N_M;
+  commented alternatives = NET_N_(M+1) … NET_N_K
 
 ---
 
@@ -67,7 +75,7 @@ All notable changes to the GLS XMRE Signal Resolver.
 - Fuzzy numeric index matching (`_1_` → `_[0-9]+_`)
 - INPUT port sub-hierarchy placement (`handcode_rdata_` routed to sub-instance)
 - auto_vector multi-bit flop support (oN port by MBIT segment index)
-- 1-based RTL_N / SCH_N_M output indexing
+- 1-based RTL_N / NET_N_M output indexing
 - Blank-line-separated blocks in xmre_match
 - Duplicate RTL path deduplication with validation count
 - Command-line arguments: xmre_log (required), partition_dir (required), -o (optional)
@@ -115,7 +123,7 @@ All notable changes to the GLS XMRE Signal Resolver.
 
 ---
 
-**Latest Version**: 1.2.0
-**Release Date**: 2026-02-27
+**Latest Version**: 1.3.0
+**Release Date**: 2026-03-13
 **Author**: Fikri (raden.ali.fikri.mubarak@intel.com)
 **Status**: Production Ready ✓

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-AIGLSXMRERESOLVE - GLS XMRE Signal Resolver v1.2
+AIGLSXMRERESOLVE - GLS XMRE Signal Resolver v1.3
 ==================================================
 
 Resolves Cross-Module Reference Errors (XMRE) from GLS elaboration by searching
@@ -29,7 +29,7 @@ Author: Fikri (raden.ali.fikri.mubarak@intel.com)
 AI Assistant: GitHub Copilot (Claude Sonnet 4.5 - 202502)
 Repository: /nfs/site/disks/zsc16_rmubarak_stod001/aitest/aiglsxmreresolve/
 Documentation: README.md, QUICK_START.md
-Version: 1.2 (2026-02-27)
+Version: 1.3 (2026-03-13)
 """
 
 import argparse
@@ -46,7 +46,7 @@ import sys
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description='AIGLSXMRERESOLVE - GLS XMRE Signal Resolver v1.2',
+        description='AIGLSXMRERESOLVE - GLS XMRE Signal Resolver v1.3',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog='''
 Examples:
@@ -589,7 +589,7 @@ def resolve_block(block, partition, modules, synopsys_ports, netlist):
 # ============================================================================
 
 def write_outputs(matches, unmatches, output_dir):
-    """Write xmre_match and xmre_unmatch files with 1-based RTL/SCH indexing.
+    """Write xmre_match and xmre_unmatch files with 1-based RTL/NET indexing.
     Selected (best) candidates are written uncommented; alternatives are commented with #.
     """
     match_out = []
@@ -603,10 +603,10 @@ def write_outputs(matches, unmatches, output_dir):
             block_lines = [f"RTL_{n} {rtl}"]
             si = 1
             for sch, sig_type in selected:
-                block_lines.append(f"SCH_{n}_{si} {sch} {sig_type}")
+                block_lines.append(f"NET_{n}_{si} {sch} {sig_type}")
                 si += 1
             for sch, sig_type in commented:
-                block_lines.append(f"#SCH_{n}_{si} {sch} {sig_type}")
+                block_lines.append(f"#NET_{n}_{si} {sch} {sig_type}")
                 si += 1
             match_out.append("\n".join(block_lines))
 

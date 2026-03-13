@@ -1,5 +1,16 @@
 # AIGLSXMRERESOLVE Version History
 
+## Version 1.3 (2026-03-13) - Rename SCH to NET
+
+### Overview
+Output label in `xmre_match` renamed from `SCH_N_M` to `NET_N_M`.
+
+### Changes
+✓ Selected candidates: `SCH_N_M` → `NET_N_M`
+✓ Commented candidates: `#SCH_N_M` → `#NET_N_M`
+
+---
+
 ## Version 1.2 (2026-02-27) - Output Rank Refinement & Port Order Fix
 
 ### Overview
@@ -54,7 +65,7 @@ Production-ready GLS XMRE signal resolver with three matching cases and multiple
 ✓ Case 2: Hierarchical output/inout port search (2 levels)
 ✓ Case 3: Register flop + auto_vector instance detection
 ✓ INPUT port sub-hierarchy placement
-✓ 1-based RTL_N / SCH_N_M indexing
+✓ 1-based RTL_N / NET_N_M indexing
 ✓ Duplicate deduplication with validation check
 ✓ Command-line argument support
 
@@ -71,6 +82,6 @@ Production-ready GLS XMRE signal resolver with three matching cases and multiple
 ---
 
 **Current Status**: Production Ready ✓
-**Current Version**: 1.2 (2026-02-27)
+**Current Version**: 1.3 (2026-03-13)
 **Author**: Fikri (raden.ali.fikri.mubarak@intel.com)
 **Stability**: Stable

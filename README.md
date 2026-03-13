@@ -90,12 +90,12 @@ sorted by netlist port declaration order (MSB first).
 ### xmre_match
 ```
 RTL_1 pcd_tb.pcd.parpmc....SUS_SIG_MON_0.PCHPWR_PIN[0]
-SCH_1_1 pcd_tb.pcd.parpmc....\new_SUS_SIG_MON_0_PCHPWR_PIN[0] input
-#SCH_1_2 pcd_tb.pcd.parpmc....\load_SUS_SIG_MON_0_PCHPWR_PIN[0] common
+NET_1_1 pcd_tb.pcd.parpmc....\new_SUS_SIG_MON_0_PCHPWR_PIN[0] input
+#NET_1_2 pcd_tb.pcd.parpmc....\load_SUS_SIG_MON_0_PCHPWR_PIN[0] common
 
 RTL_2 pcd_tb.pcd.parpmc....SUSPMCFG.EXT_SUS_PD_EN
-SCH_2_1 pcd_tb.pcd.parpmc....SUSPMCFG_reg_EXT_SUS_PD_EN_0.o output
-#SCH_2_2 pcd_tb.pcd.parpmc....\SUSPMCFG_EXT_SUS_PD_EN[0] common
+NET_2_1 pcd_tb.pcd.parpmc....SUSPMCFG_reg_EXT_SUS_PD_EN_0.o output
+#NET_2_2 pcd_tb.pcd.parpmc....\SUSPMCFG_EXT_SUS_PD_EN[0] common
 ```
 
 ### xmre_unmatch
