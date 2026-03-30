@@ -4,6 +4,16 @@ All notable changes to the GLS XMRE Signal Resolver.
 
 ---
 
+## [1.4.0] - 2026-03-30 - Recursive Netlist Search
+
+### Added
+- **Recursive netlist discovery**: `find_netlist()` helper searches `partition_dir` and all
+  subdirectories for `<partition>.pt_nonpg.v.gz`. Previously only the top-level directory
+  was checked — now works with layouts like `src/all_gls_netlist/<subdir>/<partition>.pt_nonpg.v.gz`.
+- Netlist path is cached per partition so `os.walk` only runs once per partition name.
+
+---
+
 ## [1.3.0] - 2026-03-13 - Rename SCH to NET in xmre_match
 
 ### Changed
@@ -123,7 +133,7 @@ All notable changes to the GLS XMRE Signal Resolver.
 
 ---
 
-**Latest Version**: 1.3.0
-**Release Date**: 2026-03-13
+**Latest Version**: 1.4.0
+**Release Date**: 2026-03-30
 **Author**: Fikri (raden.ali.fikri.mubarak@intel.com)
 **Status**: Production Ready ✓

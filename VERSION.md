@@ -1,5 +1,18 @@
 # AIGLSXMRERESOLVE Version History
 
+## Version 1.4 (2026-03-30) - Recursive Netlist Search
+
+### Overview
+Netlist files are now discovered recursively under the partition directory,
+supporting layouts where `.pt_nonpg.v.gz` files reside in subdirectories.
+
+### New Features
+✓ `find_netlist()` searches partition_dir and all subdirectories
+✓ Direct path checked first (zero overhead for flat layouts)
+✓ Found path cached per partition (os.walk runs once per partition)
+
+---
+
 ## Version 1.3 (2026-03-13) - Rename SCH to NET
 
 ### Overview
@@ -82,6 +95,6 @@ Production-ready GLS XMRE signal resolver with three matching cases and multiple
 ---
 
 **Current Status**: Production Ready ✓
-**Current Version**: 1.3 (2026-03-13)
+**Current Version**: 1.4 (2026-03-30)
 **Author**: Fikri (raden.ali.fikri.mubarak@intel.com)
 **Stability**: Stable

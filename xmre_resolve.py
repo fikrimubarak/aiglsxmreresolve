@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-AIGLSXMRERESOLVE - GLS XMRE Signal Resolver v1.3
+AIGLSXMRERESOLVE - GLS XMRE Signal Resolver v1.4
 ==================================================
 
 Resolves Cross-Module Reference Errors (XMRE) from GLS elaboration by searching
@@ -29,7 +29,7 @@ Author: Fikri (raden.ali.fikri.mubarak@intel.com)
 AI Assistant: GitHub Copilot (Claude Sonnet 4.5 - 202502)
 Repository: /nfs/site/disks/zsc16_rmubarak_stod001/aitest/aiglsxmreresolve/
 Documentation: README.md, QUICK_START.md
-Version: 1.3 (2026-03-13)
+Version: 1.4 (2026-03-30)
 """
 
 import argparse
@@ -46,7 +46,7 @@ import sys
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description='AIGLSXMRERESOLVE - GLS XMRE Signal Resolver v1.3',
+        description='AIGLSXMRERESOLVE - GLS XMRE Signal Resolver v1.4',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog='''
 Examples:
@@ -102,6 +102,22 @@ def get_partition_from_block(block):
     """Extract partition name from the pcd_tb.pcd.<partition>. signal path in an XMRE block."""
     m = re.search(r'pcd_tb\.pcd\.(\w+)\.', block)
     return m.group(1) if m else None
+
+
+def find_netlist(partition_dir, partition):
+    """
+    Find <partition>.pt_nonpg.v.gz in partition_dir or its subdirectories.
+    Returns the full path if found, None otherwise.
+    """
+    # Try direct path first
+    direct = os.path.join(partition_dir, f"{partition}.pt_nonpg.v.gz")
+    if os.path.isfile(direct):
+        return direct
+    # Search subdirectories
+    for root, _dirs, files in os.walk(partition_dir):
+        if f"{partition}.pt_nonpg.v.gz" in files:
+            return os.path.join(root, f"{partition}.pt_nonpg.v.gz")
+    return None
 
 
 # ============================================================================
@@ -655,9 +671,10 @@ def main():
     blocks = [b.strip() for b in blocks if b.strip()]
     print(f"  {len(blocks)} XMRE blocks found", flush=True)
 
-    # Lazy per-partition caches (module map + synopsys port set)
+    # Lazy per-partition caches (module map + synopsys port set + netlist path)
     module_map_cache = {}
     synopsys_cache = {}
+    netlist_cache = {}
 
     matches = []
     unmatches = []
@@ -668,16 +685,19 @@ def main():
 
         # Load netlist for this partition on first encounter
         if partition not in module_map_cache:
-            netlist = os.path.join(partition_dir, f"{partition}.pt_nonpg.v.gz")
-            if not os.path.isfile(netlist):
-                print(f"  WARNING: Netlist not found for partition '{partition}': {netlist}", flush=True)
+            netlist = find_netlist(partition_dir, partition)
+            if not netlist:
+                print(f"  WARNING: Netlist not found for partition '{partition}' in {partition_dir}", flush=True)
                 unmatches.append((idx, f"<netlist missing: {partition}>"))
                 continue
-            print(f"Loading partition: {partition}", flush=True)
+            print(f"Loading partition: {partition} ({netlist})", flush=True)
             module_map_cache[partition] = build_module_map(netlist)
             synopsys_cache[partition] = build_synopsys_port_set(netlist)
+            netlist_cache[partition] = netlist
 
-        netlist = os.path.join(partition_dir, f"{partition}.pt_nonpg.v.gz")
+        if partition not in netlist_cache:
+            continue
+        netlist = netlist_cache[partition]
         modules = module_map_cache[partition]
         synopsys_ports = synopsys_cache[partition]
 
